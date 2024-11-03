@@ -1,0 +1,4 @@
+.DS_Store
+daily_notes
+__pycache__
+.env
