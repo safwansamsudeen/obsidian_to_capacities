@@ -3,12 +3,14 @@ Import all non-daily notes through X-Callback-URL
 """
 
 import pyautogui as gui
+import pyperclip
 from collections import namedtuple
 from datetime import datetime
 import dotenv
 import os
 import re
 import time
+import sys
 
 PATH = dotenv.get_key('./.env', 'NOTES_PATH')
 LINK_PATTERN = r"\[([^\]]+)\]\(([^)]+)\)"
@@ -36,17 +38,22 @@ enter()
 pause()
 
 def main():
-    with open('/Users/safwan/Documents/second-brain/Atlas/Maps/Education System MOC.md') as f:
+    with open(f'{PATH}Maps/Education System MOC.md') as f:
+        gui.hotkey('command', 'p')
+        gui.write('Page')
+        enter()
+        pause()
+        type(f.name.split('/')[-1][:-3])
         type_file(f.read())
     # for path, folders, files in os.walk(PATH):
     #     c = 0
     #     for file in files:
     #         if not file.endswith('.md'): continue
     #         c += 1
-    #         gui.hotkey('command', 'p')
-    #         gui.write('Page')
-    #         enter()
-    #         pause()
+            # gui.hotkey('command', 'p')
+            # gui.write('Page')
+            # enter()
+            # pause()
 
     #         type(file[:-3])
     #         with open(path + '/' + file) as f:
@@ -80,10 +87,8 @@ def type_file(content):
         if line.startswith('>'):
             type('| ', True)
             line = line[1:]
-        print(line)
 
         words = line.split(" ")
-
         # Stitch together links
         for i, word in enumerate(words):
             # Handle spaces
@@ -100,7 +105,9 @@ def type_file(content):
                 words[i] = ' '.join(words[i:next_i])
                 words = words[:i+1] + words[next_i:]
 
+
         for word in words:
+            print(word)
             cleant_word = word.strip(' :.,')
 
             for c, k in COMMANDS.items():
@@ -111,7 +118,7 @@ def type_file(content):
             typed_word = "".join(c for c in word if c not in '*_')
 
             if m := re.match(LINK_PATTERN, word):
-                # manage_links(word, m) TOGGLE
+                manage_links(word, m)
                 pass
             else:
                 type(typed_word + ' ')
@@ -126,8 +133,14 @@ def type_file(content):
 
 def manage_links(word, match):
     text, link = match.groups()
-    if link.startswith('http:/'):
-        pass
+    if link.startswith('http:/') or link.startswith('https:/'):
+        type(text)
+        with gui.hold('shift'):
+            gui.press('left', presses=len(text))
+        gui.hotkey('command', 'k')
+        gui.keyUp('fn')
+        type(link)
+        enter()
     else:
         type('[[')
         if link not in ALREADY_CREATED and False:
