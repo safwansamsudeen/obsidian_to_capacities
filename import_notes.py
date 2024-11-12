@@ -1,41 +1,21 @@
 """
 Import all non-daily notes through X-Callback-URL
 """
-
-import pyautogui as gui
-import pyperclip
-from collections import namedtuple
-from datetime import datetime
-import dotenv
 import os
 import re
 import time
 import sys
+from datetime import datetime
 
-PATH = dotenv.get_key('./.env', 'NOTES_PATH')
+import pyautogui as gui
+import dotenv
+
+from helpers import stitch_links, partition_multi, type, enter, pause, coord, locate
+
+NOTES_PATH = dotenv.get_key('./.env', 'NOTES_PATH')
+VAULT_PATH = dotenv.get_key('./.env', 'VAULT_PATH')
 LINK_PATTERN = r"\[([^\]]+)\]\(([^)]+)\)"
 ALREADY_CREATED = []
-
-coord = namedtuple('coord', ['x', 'y'])
-
-
-def pause(seconds: float = 1): time.sleep(seconds)
-
-
-def type(content, should_pause=False):
-    gui.write(content, 0.02)
-    if should_pause:
-        pause(0.5)
-
-
-def enter(): gui.press('enter')
-
-
-def locate(file, confidence=0.5):
-    x, y = gui.locateCenterOnScreen(
-        f'./images/{file}.png', confidence=confidence)
-    return coord(x=x/2, y=y/2)
-
 
 # Open Capacities
 gui.hotkey('command')  # Initializes
@@ -46,13 +26,15 @@ pause()
 
 
 def main():
-    with open(f'{PATH}Maps/Education System MOC.md') as f:
+    with open(f'{NOTES_PATH}Maps/Idea Development.md') as f:
         gui.hotkey('command', 'p')
         gui.write('Page')
         enter()
         pause()
-        type(f.name.split('/')[-1][:-3])
-        type_file(f.read())
+        f_name = f.name.split('/')[-1][:-3]
+        type(f_name)
+        ALREADY_CREATED.append("Atlas/Maps/Idea Development.md")
+        type_file(f.read(), f_name)
     # for path, folders, files in os.walk(PATH):
     #     c = 0
     #     for file in files:
@@ -71,10 +53,11 @@ def main():
     #     if c == 1: break
 
 
-def type_file(content):
+def type_file(content, name):
     lines = content.split('\n')
     lines = add_properties(lines)
     lines = remove_formulae(lines)
+    print('Reading file')
     gui.press('enter')
     COMMANDS = {'**': 'b', '_': 'i', '*': 'i'}
     IGNORED_PATTERNS = {'```dataview': '```',
@@ -98,50 +81,38 @@ def type_file(content):
             type('| ', True)
             line = line[1:]
 
-        words = line.split(" ")
-        # Stitch together links
-        for i, word in enumerate(words):
-            # Handle spaces
-            if not word:
-                type(' ')
-                continue
-
-            if word.startswith('['):
-                next_i = i + 1
-                while next_i < len(words) and "](" not in words[next_i]:
-                    next_i += 1
-                # To offset correctly
-                next_i += 1
-                words[i] = ' '.join(words[i:next_i])
-                words = words[:i+1] + words[next_i:]
+        SPLITTERS = " -.;:.,"
+        words = stitch_links(partition_multi(line, SPLITTERS))
+        print(words)
 
         for word in words:
-            print(word)
-            cleant_word = word.strip(' :.,')
+            if word in SPLITTERS:
+                type(word)
+                continue
 
             for c, k in COMMANDS.items():
-                if cleant_word.startswith(c):
+                if word.startswith(c):
                     gui.hotkey('command', k)
                     pause(0.2)
                     break
-            typed_word = "".join(c for c in word if c not in '*_')
 
-            if m := re.match(LINK_PATTERN, word):
-                manage_links(word, m)
-                pass
-            else:
-                type(typed_word + ' ')
+            if m := re.search(LINK_PATTERN, word):
+                manage_links(m, name)
+                start, end = m.span()
+                word = word[:start] + word[end:]
+
+            if (bland := word.strip('*_')):
+                type(bland)
 
             for c, k in COMMANDS.items():
-                if cleant_word.endswith(c):
+                if word.endswith(c):
                     gui.hotkey('command', k)
                     pause(0.2)
                     break
 
         enter()
 
-
-def manage_links(word, match):
+def manage_links(match, document_name):
     text, link = match.groups()
     if link.startswith('http:/') or link.startswith('https:/'):
         type(text)
@@ -152,18 +123,44 @@ def manage_links(word, match):
         type(link)
         enter()
     else:
-        type('[[')
-        if link not in ALREADY_CREATED and False:
+        file_name = link.split('/')[-1].replace('%20', ' ')
+
+        # Manage files without extensions
+        if file_name.endswith('.md'):
+            file_name = file_name[:-3]
+
+        if file_name == document_name:
+            gui.hotkey('command', 'i')
+            type('Self')
+            gui.hotkey('command', 'i')
+        elif link not in ALREADY_CREATED:
+            type('[[')
             try:
-                with open(PATH + '/' + link, "f") as f:
+                type('pages')
+                enter()
+                gui.press('up')
+                enter()
+                pause(0.5)
+                type(file_name)
+                with open(VAULT_PATH + link) as f:
                     content = f.read()
+                    ALREADY_CREATED.append(link)
+                    print('Reading file', file_name, ALREADY_CREATED)
+                    type_file(content, file_name)
+                    print('File done reading')
 
             except FileNotFoundError:
-                pass
+                print("File is uncreated!", VAULT_PATH + link)
+                analyze_properties('tags', '- "#uncreated"', {'tags': locate('tags')}, True)
+
+            pause(1)
+            enter()
+            gui.press('escape')
+            gui.hotkey('command', 'left')
         else:
+            type('[[')
             type(text)
             enter()
-
 
 def add_properties(lines):
     if lines[0] != '---':
@@ -200,11 +197,10 @@ def remove_formulae(lines):
 
 
 def analyze_properties(property: str, line: str, coords: dict, first_tag: bool):
-    # TOGGLE
-    return ""
     line = line.strip(' -"')
     new_content = ""
     if property == 'tags':
+        # return '' # TOGGLE
         if first_tag:
             gui.moveTo(coords["tags"].x, coords["tags"].y + 100)
             gui.click()
@@ -212,16 +208,21 @@ def analyze_properties(property: str, line: str, coords: dict, first_tag: bool):
         # Note that if two tags share a beginning, this is a bug
         enter()
     elif property == 'created':
-        gui.moveTo(coords["sidebar"].x, coords["sidebar"].y +
-                   80, tween=gui.easeInOutQuad, duration=1)
-        if not "created_at" in coords:
-            d = gui.locateOnScreen('./images/stats.png', confidence=0.9)
-            coords["created_at"] = coord(
-                (d.left + d.width + 20) / 2, (d.top + d.height) / 2 - 10)
-        gui.moveTo(coords["created_at"].x, coords["created_at"].y)
-        gui.click()
-        gui.write(datetime.strptime(line, '%Y-%m-%d').strftime('%Y-%d-%m'))
-        enter()
+        try:
+            if not "created_at" in coords:
+                d = gui.locateOnScreen('./images/created.png', confidence=0.7)
+                coords["created_at"] = coord(
+                    (d.left + d.width) / 2 + 80, (d.top + d.height) / 2 - 10)
+
+            gui.moveTo(coords["sidebar"].x, coords["sidebar"].y +
+                    80, tween=gui.easeInOutQuad, duration=1)
+
+            gui.moveTo(coords["created_at"].x, coords["created_at"].y)
+            gui.click()
+            gui.write(datetime.strptime(line, '%Y-%m-%d').strftime('%Y-%d-%m'))
+            enter()
+        except gui.ImageNotFoundException:
+            print('Unable to update create property')
     if property in ['up', 'related']:
         new_content += f'*{property.capitalize()}*: {line}'
     return new_content + '\n'

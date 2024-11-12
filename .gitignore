@@ -2,3 +2,4 @@
 daily_notes
 __pycache__
 .env
+log*.txt
