@@ -3,29 +3,37 @@ Import all non-daily notes through X-Callback-URL
 """
 import os
 import re
-import time
-import sys
 from datetime import datetime
+import logging
 
 import pyautogui as gui
 import dotenv
 
-from helpers import stitch_links, partition_multi, type, enter, pause, coord, locate
+from helpers import *
 
 NOTES_PATH = dotenv.get_key('./.env', 'NOTES_PATH')
 VAULT_PATH = dotenv.get_key('./.env', 'VAULT_PATH')
 LINK_PATTERN = r"\[([^\]]+)\]\(([^)]+)\)"
-ALREADY_CREATED = []
+COMMANDS = {'**': 'b', '_': 'i', '*': 'i'}
+IGNORED_PATTERNS = {'```dataview': '```',
+                    '``` dataview': '```', '> [!Multicolumn]': ''}
+already_created = []
 
-# Open Capacities
-gui.hotkey('command')  # Initializes
-gui.hotkey('command', 'space')
-gui.write('capacities')
-enter()
-pause()
+logger = logging.getLogger(__name__)
+logging.basicConfig(filename='log.txt', filemode='w',
+                    format='%(asctime)s (levelname)s:%(message)s', level=logging.INFO)
 
 
 def main():
+    logger.info('Starting importer')
+    # Open Capacities
+    gui.hotkey('command')  # Initializes
+    gui.hotkey('command', 'space')
+    gui.write('capacities')
+    enter()
+    pause()
+
+    logger.info('Capacities opened')
     with open(f'{NOTES_PATH}Maps/Idea Development.md') as f:
         gui.hotkey('command', 'p')
         gui.write('Page')
@@ -33,77 +41,60 @@ def main():
         pause()
         f_name = f.name.split('/')[-1][:-3]
         type(f_name)
-        ALREADY_CREATED.append("Atlas/Maps/Idea Development.md")
+        already_created.append("Atlas/Maps/Idea Development.md")
         type_file(f.read(), f_name)
-    # for path, folders, files in os.walk(PATH):
-    #     c = 0
-    #     for file in files:
-    #         if not file.endswith('.md'): continue
-    #         c += 1
-        # gui.hotkey('command', 'p')
-        # gui.write('Page')
-        # enter()
-        # pause()
-
-    #         type(file[:-3])
-    #         with open(path + '/' + file) as f:
-    #             type_file(f.read())
-    #             print('Imported', file)
-    #         if c == 1: break
-    #     if c == 1: break
 
 
 def type_file(content, name):
     lines = content.split('\n')
     lines = add_properties(lines)
     lines = remove_formulae(lines)
-    print('Reading file')
     gui.press('enter')
-    COMMANDS = {'**': 'b', '_': 'i', '*': 'i'}
-    IGNORED_PATTERNS = {'```dataview': '```',
-                        '``` dataview': '```', '> [!Multicolumn]': ''}
     flag_ignored = None
 
-    for line in lines[:100]:
-        # Handle ignored
+    logger.info(f'File starting: {name}')
+
+    for line in lines:
+        # Handle ignored lines
         for ignored in IGNORED_PATTERNS:
             if ignored in line:
                 flag_ignored = ignored
                 break
-
         if flag_ignored:
             if not flag_ignored in line and IGNORED_PATTERNS[flag_ignored] in line:
                 flag_ignored = None
             continue
 
-        # Handle quotes
+        # Handle quotations
         if line.startswith('>'):
             type('| ', True)
             line = line[1:]
 
         SPLITTERS = " -.;:.,"
         words = stitch_links(partition_multi(line, SPLITTERS))
-        print(words)
 
         for word in words:
             if word in SPLITTERS:
                 type(word)
                 continue
 
+            # Trigger formatting hotkey
             for c, k in COMMANDS.items():
                 if word.startswith(c):
                     gui.hotkey('command', k)
                     pause(0.2)
                     break
 
+            # Write out links, and excise them from word
             if m := re.search(LINK_PATTERN, word):
-                manage_links(m, name)
                 start, end = m.span()
                 word = word[:start] + word[end:]
+                manage_links(m, name)
 
             if (bland := word.strip('*_')):
                 type(bland)
 
+            # Untrigger it
             for c, k in COMMANDS.items():
                 if word.endswith(c):
                     gui.hotkey('command', k)
@@ -112,8 +103,11 @@ def type_file(content, name):
 
         enter()
 
+
 def manage_links(match, document_name):
     text, link = match.groups()
+
+    # Weblinks and file links
     if link.startswith('http:/') or link.startswith('https:/'):
         type(text)
         with gui.hold('shift'):
@@ -131,9 +125,9 @@ def manage_links(match, document_name):
 
         if file_name == document_name:
             gui.hotkey('command', 'i')
-            type('Self')
+            type('self')
             gui.hotkey('command', 'i')
-        elif link not in ALREADY_CREATED:
+        elif link not in already_created:
             type('[[')
             try:
                 type('pages')
@@ -144,16 +138,15 @@ def manage_links(match, document_name):
                 type(file_name)
                 with open(VAULT_PATH + link) as f:
                     content = f.read()
-                    ALREADY_CREATED.append(link)
-                    print('Reading file', file_name, ALREADY_CREATED)
+                    already_created.append(link)
                     type_file(content, file_name)
-                    print('File done reading')
-
+                    logger.info(f'File created: {file_name}')
             except FileNotFoundError:
-                print("File is uncreated!", VAULT_PATH + link)
-                analyze_properties('tags', '- "#uncreated"', {'tags': locate('tags')}, True)
+                logger.info(f'Uncreated file: {file_name}')
+                analyze_property('tags', '- "#uncreated"',
+                                 {'tags': locate('tags')}, True)
 
-            pause(1)
+            pause(0.5)
             enter()
             gui.press('escape')
             gui.hotkey('command', 'left')
@@ -161,6 +154,7 @@ def manage_links(match, document_name):
             type('[[')
             type(text)
             enter()
+
 
 def add_properties(lines):
     if lines[0] != '---':
@@ -181,26 +175,21 @@ def add_properties(lines):
             gui.press('escape')
         elif ':' in line:
             property, line = line.split(':')
-            new_content += analyze_properties(property,
-                                              line, coords, first_tag)
+            new_content += analyze_property(property,
+                                            line, coords, first_tag)
         else:
-            new_content += analyze_properties(property,
-                                              line, coords, first_tag)
+            new_content += analyze_property(property,
+                                            line, coords, first_tag)
             if property == 'tags':
                 first_tag = False
 
     return new_content.split('\n') + lines[i+1:]
 
 
-def remove_formulae(lines):
-    return [line for line in lines if not line.startswith('> [!') and line.strip(' >')]
-
-
-def analyze_properties(property: str, line: str, coords: dict, first_tag: bool):
+def analyze_property(property: str, line: str, coords: dict, first_tag: bool = True):
     line = line.strip(' -"')
     new_content = ""
     if property == 'tags':
-        # return '' # TOGGLE
         if first_tag:
             gui.moveTo(coords["tags"].x, coords["tags"].y + 100)
             gui.click()
@@ -215,17 +204,19 @@ def analyze_properties(property: str, line: str, coords: dict, first_tag: bool):
                     (d.left + d.width) / 2 + 80, (d.top + d.height) / 2 - 10)
 
             gui.moveTo(coords["sidebar"].x, coords["sidebar"].y +
-                    80, tween=gui.easeInOutQuad, duration=1)
+                       80, tween=gui.easeInOutQuad, duration=1)
 
             gui.moveTo(coords["created_at"].x, coords["created_at"].y)
             gui.click()
             gui.write(datetime.strptime(line, '%Y-%m-%d').strftime('%Y-%d-%m'))
             enter()
         except gui.ImageNotFoundException:
-            print('Unable to update create property')
+            logger.error(f'Property {property} not added')
+
     if property in ['up', 'related']:
         new_content += f'*{property.capitalize()}*: {line}'
     return new_content + '\n'
 
 
-main()
+if __name__ == '__main__':
+    main()

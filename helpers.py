@@ -5,11 +5,11 @@ from collections import namedtuple
 
 coord = namedtuple('coord', ['x', 'y'])
 
+
 def stitch_links(words: list[str]) -> list[str]:
     """
     Takes a list of splitted words and stitches together the words that are part of a link.
     """
-    print('STITCHING', words)
     results = []
     prev_i = 0
     for i, word in enumerate(words):
@@ -20,7 +20,6 @@ def stitch_links(words: list[str]) -> list[str]:
             while next_i < len(words):
                 if "](" in words[next_i]:
                     link_opened = True
-                print(words[next_i])
                 if link_opened and words[next_i].strip('*_').endswith(")"):
                     break
                 next_i += 1
@@ -28,10 +27,10 @@ def stitch_links(words: list[str]) -> list[str]:
             results.extend(words[prev_i:i])
             prev_i = next_i + 1
             results.append(''.join(words[i:prev_i]))
-            print(word, results, i, next_i)
             link_opened = False
 
     return results + words[prev_i:]
+
 
 def partition_multi(s, splitters):
     """
@@ -41,14 +40,17 @@ def partition_multi(s, splitters):
     res = []
     for i, c in enumerate(s):
         if c in splitters:
-            if prev_i != i: res.append(s[prev_i:i])
+            if prev_i != i:
+                res.append(s[prev_i:i])
             res.append(c)
             prev_i = i + 1
     res.append(s[prev_i:])
     return res
 
+
 def pause(seconds: float = 1):
     time.sleep(seconds)
+
 
 def type(content, should_pause=False):
     gui.keyUp('shift')
@@ -57,10 +59,16 @@ def type(content, should_pause=False):
     if should_pause:
         pause(0.5)
 
+
 def enter():
     gui.press('enter')
+
 
 def locate(file, confidence=0.5):
     x, y = gui.locateCenterOnScreen(
         f'./images/{file}.png', confidence=confidence)
     return coord(x=x/2, y=y/2)
+
+
+def remove_formulae(lines):
+    return [line for line in lines if not line.startswith('> [!') and line.strip(' >')]
