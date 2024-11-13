@@ -14,9 +14,13 @@ from helpers import *
 NOTES_PATH = dotenv.get_key('./.env', 'NOTES_PATH')
 VAULT_PATH = dotenv.get_key('./.env', 'VAULT_PATH')
 LINK_PATTERN = r"\[([^\]]+)\]\(([^)]+)\)"
-COMMANDS = {'**': 'b', '_': 'i', '*': 'i'}
+COMMANDS = {'**': 'b', '_': 'i', '*': 'i', '~~': ['shift', 's']}
+
 IGNORED_PATTERNS = {'```dataview': '```',
                     '``` dataview': '```', '> [!Multicolumn]': ''}
+REPLACEMENTS = {
+    '> '
+}
 already_created = []
 
 logger = logging.getLogger(__name__)
@@ -34,7 +38,7 @@ def main():
     pause()
 
     logger.info('Capacities opened')
-    with open(f'{NOTES_PATH}Maps/Idea Development.md') as f:
+    with open(f'{VAULT_PATH}Efforts/Notes/College 2024/Application Tracking/US College Applications.md') as f:
         gui.hotkey('command', 'p')
         gui.write('Page')
         enter()
@@ -51,6 +55,8 @@ def type_file(content, name):
     lines = remove_formulae(lines)
     gui.press('enter')
     flag_ignored = None
+    flag_in_list = False
+    list_indent = 0
 
     logger.info(f'File starting: {name}')
 
@@ -70,6 +76,20 @@ def type_file(content, name):
             type('| ', True)
             line = line[1:]
 
+        # Handle lists
+        if flag_in_list:
+            this_line_indent = count_at_beginning(line, '\t')
+            if this_line_indent != list_indent:
+                gui.hotkey('shift', 'tab')
+            if not line.strip().startswith('- '):
+                flag_in_list = False
+                for _ in range(list_indent + 1): gui.hotkey('shift', 'tab')
+            else:
+                line = line.replace('- ', '', 1)
+                list_indent = count_at_beginning(line, '\t')
+        if line.strip().startswith('- '):
+            flag_in_list = True
+
         SPLITTERS = " -.;:.,"
         words = stitch_links(partition_multi(line, SPLITTERS))
 
@@ -81,8 +101,8 @@ def type_file(content, name):
             # Trigger formatting hotkey
             for c, k in COMMANDS.items():
                 if word.startswith(c):
-                    gui.hotkey('command', k)
-                    pause(0.2)
+                    gui.hotkey('command', k) if isinstance(k, str) else gui.hotkey('command', *k)
+                    pause(0.1)
                     break
 
             # Write out links, and excise them from word
@@ -91,21 +111,26 @@ def type_file(content, name):
                 word = word[:start] + word[end:]
                 manage_links(m, name)
 
-            if (bland := word.strip('*_')):
+            if (bland := word.strip('*_~')):
                 type(bland)
 
             # Untrigger it
             for c, k in COMMANDS.items():
                 if word.endswith(c):
-                    gui.hotkey('command', k)
-                    pause(0.2)
+                    gui.hotkey('command', k) if isinstance(k, str) else gui.hotkey('command', *k)
+                    pause(0.1)
                     break
+
+            # Handle tags
+            if word.startswith('#'):
+                enter()
 
         enter()
 
 
 def manage_links(match, document_name):
     text, link = match.groups()
+
 
     # Weblinks and file links
     if link.startswith('http:/') or link.startswith('https:/'):
@@ -117,7 +142,8 @@ def manage_links(match, document_name):
         type(link)
         enter()
     else:
-        file_name = link.split('/')[-1].replace('%20', ' ')
+        link = link.replace('%20', ' ')
+        file_name = link.split('/')[-1]
 
         # Manage files without extensions
         if file_name.endswith('.md'):
@@ -128,13 +154,9 @@ def manage_links(match, document_name):
             type('self')
             gui.hotkey('command', 'i')
         elif link not in already_created:
-            type('[[')
+            type('+Page')
             try:
-                type('pages')
                 enter()
-                gui.press('up')
-                enter()
-                pause(0.5)
                 type(file_name)
                 with open(VAULT_PATH + link) as f:
                     content = f.read()
@@ -142,17 +164,16 @@ def manage_links(match, document_name):
                     type_file(content, file_name)
                     logger.info(f'File created: {file_name}')
             except FileNotFoundError:
-                logger.info(f'Uncreated file: {file_name}')
+                logger.info(f'Uncreated file: {file_name}, at {VAULT_PATH + link}')
                 analyze_property('tags', '- "#uncreated"',
                                  {'tags': locate('tags')}, True)
 
-            pause(0.5)
-            enter()
             gui.press('escape')
-            gui.hotkey('command', 'left')
+            gui.hotkey('command', '[')
+            enter()
         else:
             type('[[')
-            type(text)
+            type(file_name)
             enter()
 
 
@@ -191,9 +212,9 @@ def analyze_property(property: str, line: str, coords: dict, first_tag: bool = T
     new_content = ""
     if property == 'tags':
         if first_tag:
-            gui.moveTo(coords["tags"].x, coords["tags"].y + 100)
+            gui.moveTo(coords["tags"].x, coords["tags"].y + 90)
             gui.click()
-        type(line)
+        type(line[1:])
         # Note that if two tags share a beginning, this is a bug
         enter()
     elif property == 'created':

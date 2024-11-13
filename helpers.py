@@ -1,10 +1,12 @@
 import time
 import pyautogui as gui
 from collections import namedtuple
+from itertools import takewhile
+from string import whitespace
 
 
 coord = namedtuple('coord', ['x', 'y'])
-
+WHITESPACE = whitespace + '^I'
 
 def stitch_links(words: list[str]) -> list[str]:
     """
@@ -14,13 +16,13 @@ def stitch_links(words: list[str]) -> list[str]:
     prev_i = 0
     for i, word in enumerate(words):
         # TOGGLE Handle image links too by adding `.strip('!')`
-        if word.strip('*_').startswith('[') and not word.endswith(']'):
+        if word.strip('*_' + WHITESPACE).startswith('[') and not word.strip('*_' + WHITESPACE).endswith(']'):
             invalid_link, link_opened = False, False
             next_i = i
             while next_i < len(words):
                 if "](" in words[next_i]:
                     link_opened = True
-                if link_opened and words[next_i].strip('*_').endswith(")"):
+                if link_opened and words[next_i].strip('*_' + WHITESPACE).endswith(")"):
                     break
                 next_i += 1
 
@@ -55,7 +57,7 @@ def pause(seconds: float = 1):
 def type(content, should_pause=False):
     gui.keyUp('shift')
     gui.keyUp('fn')
-    gui.write(content, 0.02)
+    gui.write(content, 0.01)
     if should_pause:
         pause(0.5)
 
@@ -72,3 +74,6 @@ def locate(file, confidence=0.5):
 
 def remove_formulae(lines):
     return [line for line in lines if not line.startswith('> [!') and line.strip(' >')]
+
+def count_at_beginning(word, c):
+    return sum(1 for _ in takewhile(lambda x: x == c, word))
