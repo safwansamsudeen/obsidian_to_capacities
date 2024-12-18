@@ -1,6 +1,3 @@
-"""
-Import all non-daily notes through X-Callback-URL
-"""
 import os
 import re
 from datetime import datetime
@@ -11,7 +8,6 @@ import dotenv
 
 from helpers import *
 
-NOTES_PATH = dotenv.get_key('./.env', 'NOTES_PATH')
 VAULT_PATH = dotenv.get_key('./.env', 'VAULT_PATH')
 LINK_PATTERN = r"\[([^\]]+)\]\(([^)]+)\)"
 COMMANDS = {'**': 'b', '_': 'i', '*': 'i', '~~': ['shift', 's']}
@@ -38,7 +34,7 @@ def main():
     pause()
 
     logger.info('Capacities opened')
-    with open(f'{VAULT_PATH}Efforts/Notes/College 2024/Application Tracking/US College Applications.md') as f:
+    with open(f'{VAULT_PATH}Calendar/Planning/Journal Readings/My First Year After Operation Shirt.md') as f:
         gui.hotkey('command', 'p')
         gui.write('Page')
         enter()
